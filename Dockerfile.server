@@ -1,0 +1,29 @@
+FROM python:3.10-slim
+
+# Add metadata labels
+LABEL maintainer="MCP Team" \
+    description="S3 MCP Server" \
+    version="1.0"
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    chmod +x kubectl && \
+    mv kubectl /usr/local/bin/ && \
+    apt-get purge -y curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy server code
+COPY s3_server.py .
+
+# Expose the port used by the server
+EXPOSE 8080
+
+# Run the server
+CMD ["python", "s3_server.py", "--port", "8080"] 
