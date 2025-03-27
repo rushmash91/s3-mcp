@@ -1,0 +1,140 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: s3-mcp-deployment.kro.run
+  namespace: default
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: S3MCPDeployment
+    spec:
+      name: string | default=s3-mcp-server
+      namespace: string | default=default
+      values:
+        server:
+          image: string | default=your-registry/s3-mcp-server:latest
+          port: integer | default=8080
+        ingress:
+          enabled: boolean | default=true
+          class: string | default=alb
+          scheme: string | default=internet-facing
+          targetType: string | default=ip
+
+  resources:
+  - id: s3mcpServiceAccount
+    template:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: ${schema.spec.name}-sa
+        namespace: ${schema.spec.namespace}
+
+  - id: s3mcpClusterRole
+    template:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: ${schema.spec.name}-manager
+      rules:
+      - apiGroups: ["s3.services.k8s.aws"]
+        resources: ["buckets"]
+        verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "apply"]
+      - apiGroups: [""]
+        resources: ["secrets"]
+        verbs: ["get", "list", "watch"]
+
+  - id: s3mcpClusterRoleBinding
+    template:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: ${schema.spec.name}-binding
+      subjects:
+      - kind: ServiceAccount
+        name: ${schema.spec.name}-sa
+        namespace: ${schema.spec.namespace}
+      roleRef:
+        kind: ClusterRole
+        name: ${schema.spec.name}-manager
+        apiGroup: rbac.authorization.k8s.io
+
+  - id: s3mcpService
+    template:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: ${schema.spec.name}
+        namespace: ${schema.spec.namespace}
+        labels:
+          app: ${schema.spec.name}
+      spec:
+        ports:
+          - port: 8080
+            targetPort: 8080
+            protocol: TCP
+            name: http
+        selector:
+          app: ${schema.spec.name}
+
+  - id: s3mcpDeployment
+    template:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ${schema.spec.name}
+        namespace: ${schema.spec.namespace}
+        labels:
+          app: ${schema.spec.name}
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: ${schema.spec.name}
+        template:
+          metadata:
+            labels:
+              app: ${schema.spec.name}
+          spec:
+            serviceAccountName: ${schema.spec.name}-sa
+            containers:
+            - name: server
+              image: ${schema.spec.values.server.image}
+              resources:
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+                requests:
+                  cpu: "200m"
+                  memory: "256Mi"
+              ports:
+              - containerPort: 8080
+              env:
+              - name: HOST
+                value: "0.0.0.0"
+              - name: PORT
+                value: "8080"
+
+  - id: s3mcpIngress
+    includeWhen:
+    - ${schema.spec.values.ingress.enabled}
+    template:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: ${schema.spec.name}-ingress
+        namespace: ${schema.spec.namespace}
+        annotations:
+          kubernetes.io/ingress.class: ${schema.spec.values.ingress.class}
+          alb.ingress.kubernetes.io/scheme: ${schema.spec.values.ingress.scheme}
+          alb.ingress.kubernetes.io/target-type: ${schema.spec.values.ingress.targetType}
+      spec:
+        rules:
+        - http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: ${schema.spec.name}
+                  port:
+                    number: 8080
