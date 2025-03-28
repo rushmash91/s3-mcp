@@ -4,10 +4,11 @@ This project implements an MCP server and client for creating S3 buckets using t
 
 ## Prerequisites
 
+- KRO
 - Python 3.10 or higher
 - Kubernetes cluster with AWS ACK controller installed
 - `kubectl` configured to access your cluster
-- AWS credentials configured for ACK controller
+- ACK S3 controller
 
 ## Setup
 
@@ -26,7 +27,7 @@ python s3_server.py
 3. In a separate terminal, run the client:
 
 ```bash
-python s3_client.py
+python s3_client.py <SSE Endpoint>
 ```
 
 ## Features
